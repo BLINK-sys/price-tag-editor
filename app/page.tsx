@@ -421,7 +421,7 @@ export default function PriceTagEditor() {
           {/* Предварительный просмотр */}
           <Card>
             <CardHeader>
-              <CardTitle>Предварительный просмотр ценника</CardTitle>
+              <CardTitle>Предварительный просмотр</CardTitle>
             </CardHeader>
             <CardContent>
               <div

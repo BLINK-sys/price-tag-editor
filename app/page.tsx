@@ -28,12 +28,9 @@ interface PriceTagData {
 }
 
 interface PDFSettings {
-  format: "a4" | "a5" | "letter"
   orientation: "portrait" | "landscape"
-  quality: "low" | "medium" | "high"
   includeTimestamp: boolean
   includeBorder: boolean
-  multipleCopies: number
 }
 
 export default function PriceTagEditor() {
@@ -52,12 +49,9 @@ export default function PriceTagEditor() {
   })
 
   const [pdfSettings, setPdfSettings] = useState<PDFSettings>({
-    format: "a4",
     orientation: "landscape", // альбомная по умолчанию
-    quality: "high", // всегда высокое
     includeTimestamp: false, // не используется
     includeBorder: false, // не используется
-    multipleCopies: 1,
   })
 
   const [isGenerating, setIsGenerating] = useState(false)
@@ -140,8 +134,8 @@ export default function PriceTagEditor() {
     try {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      const qualitySettings = getQualitySettings(pdfSettings.quality)
-      const pageDimensions = getPageDimensions(pdfSettings.format, pdfSettings.orientation)
+      const qualitySettings = getQualitySettings("high")
+      const pageDimensions = getPageDimensions("a4", pdfSettings.orientation)
 
       // Генерируем canvas без отступов, на всю страницу
       const canvas = await html2canvas(element, {
@@ -157,14 +151,14 @@ export default function PriceTagEditor() {
         logging: false,
       })
 
-      const pdf = new jsPDF(pdfSettings.orientation, "mm", pdfSettings.format)
+      const pdf = new jsPDF(pdfSettings.orientation, "mm", "a4")
       const pdfWidth = pageDimensions.width
       const pdfHeight = pageDimensions.height
       const imgData = canvas.toDataURL("image/png", qualitySettings.quality)
 
       // Новая логика: вставляем картинку строго с (0,0) и на всю ширину/высоту
       const copiesPerRow = pdfSettings.orientation === "landscape" ? 2 : 1
-      const copiesPerCol = Math.ceil(pdfSettings.multipleCopies / copiesPerRow)
+      const copiesPerCol = Math.ceil(1 / copiesPerRow) // Количество копий всегда 1
       const canvasAspectRatio = canvas.width / canvas.height
       const availableWidth = pdfWidth / copiesPerRow
       const availableHeight = pdfHeight / copiesPerCol
@@ -174,7 +168,7 @@ export default function PriceTagEditor() {
         targetHeight = availableHeight
         targetWidth = targetHeight * canvasAspectRatio
       }
-      for (let copy = 0; copy < pdfSettings.multipleCopies; copy++) {
+      for (let copy = 0; copy < 1; copy++) { // Копий всегда 1
         const row = Math.floor(copy / copiesPerRow)
         const col = copy % copiesPerRow
         const x = col * availableWidth
@@ -204,7 +198,7 @@ export default function PriceTagEditor() {
       }
 
       // Add page number if multiple pages
-      if (pdfSettings.multipleCopies > 4) {
+      if (1 > 4) { // Копий всегда 1
         pdf.setFontSize(10)
         pdf.setTextColor(100, 100, 100)
         pdf.text(`Страница 1`, pdfWidth - 25, pdfHeight - 5)
@@ -220,7 +214,7 @@ export default function PriceTagEditor() {
         .replace(/[^a-zA-Zа-яА-Я0-9\s]/g, "")
         .substring(0, 25)
         .trim()
-      const copiesText = pdfSettings.multipleCopies > 1 ? `_${pdfSettings.multipleCopies}шт` : ""
+      const copiesText = 1 > 1 ? `_${1}шт` : ""
       const filename = `ценник_${productName}_${date}_${time}${copiesText}.pdf`
 
       // Download the PDF
@@ -246,7 +240,7 @@ export default function PriceTagEditor() {
     try {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
-      const qualitySettings = getQualitySettings(pdfSettings.quality)
+      const qualitySettings = getQualitySettings("high")
       
       const canvas = await html2canvas(element, {
         scale: qualitySettings.scale,
@@ -296,15 +290,15 @@ export default function PriceTagEditor() {
   }
 
   const getPDFInfo = () => {
-    const pageDimensions = getPageDimensions(pdfSettings.format, pdfSettings.orientation)
+    const pageDimensions = getPageDimensions("a4", pdfSettings.orientation)
     const copiesPerRow = pdfSettings.orientation === "landscape" ? 2 : 1
-    const copiesPerCol = Math.ceil(pdfSettings.multipleCopies / copiesPerRow)
+    const copiesPerCol = Math.ceil(1 / copiesPerRow) // Копий всегда 1
     
     return {
-      format: pdfSettings.format.toUpperCase(),
+      format: "A4",
       orientation: pdfSettings.orientation === "portrait" ? "Книжная" : "Альбомная",
-      quality: pdfSettings.quality === "high" ? "Высокое" : pdfSettings.quality === "medium" ? "Среднее" : "Низкое",
-      copies: pdfSettings.multipleCopies,
+      quality: "Высокое",
+      copies: 1,
       copiesPerRow,
       copiesPerCol,
       pageWidth: pageDimensions.width,
@@ -552,22 +546,6 @@ export default function PriceTagEditor() {
             <CardContent className="space-y-6">
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="format">Формат</Label>
-                  <Select
-                    value={pdfSettings.format}
-                    onValueChange={(value) => setPdfSettings(prev => ({ ...prev, format: value as any }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="a4">A4</SelectItem>
-                      <SelectItem value="a5">A5</SelectItem>
-                      <SelectItem value="letter">Letter</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
                   <Label htmlFor="orientation">Ориентация</Label>
                   <Select
                     value={pdfSettings.orientation}
@@ -582,16 +560,7 @@ export default function PriceTagEditor() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="copies">Количество копий</Label>
-                  <Input
-                    type="number"
-                    min="1"
-                    max="2"
-                    value={pdfSettings.multipleCopies}
-                    onChange={(e) => setPdfSettings(prev => ({ ...prev, multipleCopies: Math.max(1, Math.min(2, parseInt(e.target.value) || 1)) }))}
-                  />
-                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="exportFormat">Формат экспорта</Label>
                   <Select
@@ -608,6 +577,40 @@ export default function PriceTagEditor() {
                   </Select>
                 </div>
               </div>
+              
+              {/* Информационный блок */}
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <h3 className="font-semibold text-blue-800 mb-3">Текущая информация:</h3>
+                <div className="space-y-2 text-sm">
+                  <div><span className="font-medium">Название:</span> {data.productName || "Не указано"}</div>
+                  <div><span className="font-medium">Характеристики:</span></div>
+                  <div className="ml-4 space-y-1">
+                    {data.specifications.filter(spec => spec.key && spec.value).length > 0 ? (
+                      data.specifications
+                        .filter(spec => spec.key && spec.value)
+                        .map((spec) => (
+                          <div key={spec.id} className="text-gray-700">
+                            • {spec.key}: {spec.value}
+                          </div>
+                        ))
+                    ) : (
+                      <div className="text-gray-500 italic">Не указаны</div>
+                    )}
+                  </div>
+                  <div><span className="font-medium">Цены:</span></div>
+                  <div className="ml-4 space-y-1">
+                    {data.hasDiscount ? (
+                      <>
+                        <div className="text-green-700">• Со скидкой: {formatPrice(data.currentPrice)} {data.currency}</div>
+                        <div className="text-gray-600 line-through">• Первоначальная: {formatPrice(data.originalPrice)} {data.currency}</div>
+                      </>
+                    ) : (
+                      <div className="text-gray-700">• {formatPrice(data.currentPrice)} {data.currency}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
               {/* PDF Info Preview внизу карточки */}
               <div className="bg-gray-50 p-3 rounded-lg mt-6">
                 <div className="flex items-center gap-2 mb-2">

@@ -48,17 +48,17 @@ export default function PriceTagEditor() {
   // Массив данных для каждого товара
   const [productsData, setProductsData] = useState<PriceTagData[]>([
     {
-      productName: "Название и модель товара",
-      specifications: [
-        { id: "1", key: "Характеристики", value: "1" },
-        { id: "2", key: "Характеристики", value: "2" },
-        { id: "3", key: "Характеристики", value: "3" },
-        { id: "4", key: "Характеристики", value: "4" },
-      ],
-      currentPrice: "900000",
-      originalPrice: "1000000",
-      hasDiscount: true,
-      currency: "тенге/шт",
+    productName: "Название и модель товара",
+    specifications: [
+      { id: "1", key: "Характеристики", value: "1" },
+      { id: "2", key: "Характеристики", value: "2" },
+      { id: "3", key: "Характеристики", value: "3" },
+      { id: "4", key: "Характеристики", value: "4" },
+    ],
+    currentPrice: "900000",
+    originalPrice: "1000000",
+    hasDiscount: true,
+    currency: "тенге/шт",
     }
   ])
 
@@ -78,17 +78,22 @@ export default function PriceTagEditor() {
   const [showLogoSettings, setShowLogoSettings] = useState(false)
   const [isClient, setIsClient] = useState(false)
   const [showSaveConfirmDialog, setShowSaveConfirmDialog] = useState(false)
+  
+  // Состояние для размера шрифта наименования товара
+  const [productNameFontSize, setProductNameFontSize] = useState(16)
+  
+  // Состояние для размера шрифта характеристик
+  const [specificationsFontSize, setSpecificationsFontSize] = useState(14)
 
   // Загружаем сохраненные настройки только на клиенте
   useEffect(() => {
     setIsClient(true)
     const loadSettings = async () => {
       try {
-        const config = await loadLogoConfig()
-        setLogoSettings(config)
-      } catch (e) {
-        console.error('Ошибка загрузки настроек логотипа:', e)
-        setLogoSettings(defaultLogoConfig)
+        const settings = await loadLogoConfig()
+        setLogoSettings(settings)
+      } catch (error) {
+        console.error('Ошибка загрузки настроек логотипа:', error)
       }
     }
     loadSettings()
@@ -173,6 +178,35 @@ export default function PriceTagEditor() {
     ))
   }
 
+  // Автоматическое обновление размера шрифта при изменении наименования товара
+  useEffect(() => {
+    if (isClient) {
+      const currentProduct = getCurrentProduct()
+      const newFontSize = adjustProductNameFontSize(currentProduct.productName)
+      setProductNameFontSize(newFontSize)
+    }
+  }, [getCurrentProduct().productName, isClient])
+
+  // Автоматическое обновление размера шрифта при изменении характеристик
+  useEffect(() => {
+    if (isClient) {
+      const currentProduct = getCurrentProduct()
+      const newFontSize = adjustSpecificationsFontSize(currentProduct.specifications)
+      setSpecificationsFontSize(newFontSize)
+    }
+  }, [getCurrentProduct().specifications, isClient])
+
+  // Обновление размеров шрифтов при переключении между товарами
+  useEffect(() => {
+    if (isClient) {
+      const currentProduct = getCurrentProduct()
+      const newProductNameFontSize = adjustProductNameFontSize(currentProduct.productName)
+      const newSpecsFontSize = adjustSpecificationsFontSize(currentProduct.specifications)
+      setProductNameFontSize(newProductNameFontSize)
+      setSpecificationsFontSize(newSpecsFontSize)
+    }
+  }, [activeTab, isClient])
+
   const addSpecification = () => {
     setCurrentProduct((prev) => {
       if (prev.specifications.length >= 4) return prev;
@@ -211,6 +245,87 @@ export default function PriceTagEditor() {
     return numPrice.toLocaleString("ru-RU")
   }
 
+  // Функция для автоматического подстраивания размера шрифта наименования товара
+  const adjustProductNameFontSize = (text: string, containerWidth: number = 256) => {
+    if (!text || !isClient) return 16
+    
+    // Создаем временный элемент для измерения текста
+    const tempElement = document.createElement('div')
+    tempElement.style.position = 'absolute'
+    tempElement.style.visibility = 'hidden'
+    tempElement.style.whiteSpace = 'nowrap'
+    tempElement.style.fontWeight = 'bold'
+    tempElement.style.fontFamily = 'Arial, Helvetica, sans-serif'
+    tempElement.textContent = text
+    
+    document.body.appendChild(tempElement)
+    
+    let fontSize = 16
+    const maxFontSize = 24
+    const minFontSize = 8
+    const padding = 32 // Учитываем padding контейнера (px-4 = 16px с каждой стороны)
+    const availableWidth = containerWidth - padding
+    
+    // Начинаем с максимального размера и уменьшаем, пока текст не поместится
+    for (let size = maxFontSize; size >= minFontSize; size--) {
+      tempElement.style.fontSize = `${size}px`
+      const textWidth = tempElement.offsetWidth
+      
+      if (textWidth <= availableWidth) {
+        fontSize = size
+        break
+      }
+    }
+    
+    document.body.removeChild(tempElement)
+    return fontSize
+  }
+
+  // Функция для автоматического подстраивания размера шрифта характеристик
+  const adjustSpecificationsFontSize = (specifications: Specification[], containerWidth: number = 297) => {
+    if (!specifications.length || !isClient) return 14
+    
+    // Создаем временный элемент для измерения текста
+    const tempElement = document.createElement('div')
+    tempElement.style.position = 'absolute'
+    tempElement.style.visibility = 'hidden'
+    tempElement.style.whiteSpace = 'nowrap'
+    tempElement.style.fontFamily = 'Arial, Helvetica, sans-serif'
+    tempElement.style.fontSize = '14px'
+    
+    document.body.appendChild(tempElement)
+    
+    let fontSize = 14
+    const maxFontSize = 14
+    const minFontSize = 8
+    const padding = 32 // Учитываем padding контейнера (p-4 = 16px с каждой стороны)
+    const availableWidth = containerWidth - padding
+    
+    // Начинаем с максимального размера и уменьшаем, пока все строки характеристик поместятся
+    for (let size = maxFontSize; size >= minFontSize; size--) {
+      tempElement.style.fontSize = `${size}px`
+      let maxTextWidth = 0
+      
+      // Проверяем все строки характеристик
+      for (const spec of specifications) {
+        if (spec.key && spec.value) {
+          const text = `${spec.key}: ${spec.value}`
+          tempElement.textContent = text
+          const textWidth = tempElement.offsetWidth
+          maxTextWidth = Math.max(maxTextWidth, textWidth)
+        }
+      }
+      
+      if (maxTextWidth <= availableWidth) {
+        fontSize = size
+        break
+      }
+    }
+    
+    document.body.removeChild(tempElement)
+    return fontSize
+  }
+
   const getQualitySettings = (quality: string) => {
     switch (quality) {
       case "low":
@@ -247,6 +362,17 @@ export default function PriceTagEditor() {
     try {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
+      // Обновляем размер шрифта для всех товаров перед генерацией
+      for (let i = 0; i < productCount; i++) {
+        const product = productsData[i]
+        const productNameFontSize = adjustProductNameFontSize(product.productName)
+        const specsFontSize = adjustSpecificationsFontSize(product.specifications)
+        if (i === activeTab) {
+          setProductNameFontSize(productNameFontSize)
+          setSpecificationsFontSize(specsFontSize)
+        }
+      }
+
       const qualitySettings = getQualitySettings("high")
       const pageDimensions = getPageDimensions("a4", pdfSettings.orientation)
       const pdf = new jsPDF(pdfSettings.orientation, "mm", "a4")
@@ -274,28 +400,28 @@ export default function PriceTagEditor() {
         const element = document.getElementById("price-tag-preview")
         if (!element) continue
 
-        const canvas = await html2canvas(element, {
-          scale: qualitySettings.scale,
-          useCORS: true,
-          allowTaint: true,
-          backgroundColor: "#ffffff",
-          scrollX: 0,
-          scrollY: 0,
-          width: element.offsetWidth,
-          height: element.offsetHeight,
-          imageTimeout: 15000,
-          logging: false,
-        })
+      const canvas = await html2canvas(element, {
+        scale: qualitySettings.scale,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        scrollX: 0,
+        scrollY: 0,
+        width: element.offsetWidth,
+        height: element.offsetHeight,
+        imageTimeout: 15000,
+        logging: false,
+      })
 
-        const imgData = canvas.toDataURL("image/png", qualitySettings.quality)
-        const canvasAspectRatio = canvas.width / canvas.height
+      const imgData = canvas.toDataURL("image/png", qualitySettings.quality)
+      const canvasAspectRatio = canvas.width / canvas.height
         
-        let targetWidth = availableWidth
-        let targetHeight = targetWidth / canvasAspectRatio
-        if (targetHeight > availableHeight) {
-          targetHeight = availableHeight
-          targetWidth = targetHeight * canvasAspectRatio
-        }
+      let targetWidth = availableWidth
+      let targetHeight = targetWidth / canvasAspectRatio
+      if (targetHeight > availableHeight) {
+        targetHeight = availableHeight
+        targetWidth = targetHeight * canvasAspectRatio
+      }
 
         pdf.addImage(imgData, "PNG", x, y, targetWidth, targetHeight)
       }
@@ -305,15 +431,15 @@ export default function PriceTagEditor() {
 
       // Add border if enabled
       if (pdfSettings.includeBorder) {
-        pdf.setDrawColor(200, 200, 200)
+      pdf.setDrawColor(200, 200, 200)
         pdf.setLineWidth(0.2)
         pdf.rect(2, 2, pdfWidth - 4, pdfHeight - 4)
       }
 
       // Add timestamp if enabled
       if (pdfSettings.includeTimestamp) {
-        pdf.setFontSize(8)
-        pdf.setTextColor(128, 128, 128)
+      pdf.setFontSize(8)
+      pdf.setTextColor(128, 128, 128)
         const timestamp = new Date().toLocaleString("ru-RU", {
           year: "numeric",
           month: "2-digit",
@@ -361,11 +487,18 @@ export default function PriceTagEditor() {
     try {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
+      // Обновляем размер шрифта перед генерацией изображения
+      const currentProduct = getCurrentProduct()
+      const productNameFontSize = adjustProductNameFontSize(currentProduct.productName)
+      const specsFontSize = adjustSpecificationsFontSize(currentProduct.specifications)
+      setProductNameFontSize(productNameFontSize)
+      setSpecificationsFontSize(specsFontSize)
+
       const qualitySettings = getQualitySettings("high")
       
       const element = document.getElementById("price-tag-preview")
       if (!element) return
-
+      
       const canvas = await html2canvas(element, {
         scale: qualitySettings.scale,
         useCORS: true,
@@ -607,13 +740,13 @@ export default function PriceTagEditor() {
                         transition: 'transform 0.2s ease'
                       }}
                     >
-                      <Image
-                        src="/images/logo_pospro_new.png"
-                        alt="POSPRO Logo"
+                    <Image
+                      src="/images/logo_pospro_new.png"
+                      alt="POSPRO Logo"
                         width={isClient ? logoSettings.size : 180}
                         height={isClient ? logoSettings.size * 0.5 : 90}
-                        className="object-contain"
-                      />
+                      className="object-contain"
+                    />
                     </div>
                   </div>
                 </div>
@@ -622,7 +755,17 @@ export default function PriceTagEditor() {
                 {getCurrentProduct().productName && (
                   <div className="flex justify-end pb-2">
                     <div className="w-64 px-4 bg-[rgba(255,195,1,1)] text-right rounded-l-md" style={{ height: '32px', display: 'table' }}>
-                      <div className={`font-bold text-right truncate pr-0 ${isExportMode ? 'export-product-name-shift' : ''}`} style={{ display: 'table-cell', verticalAlign: 'middle', lineHeight: '1' }}>{getCurrentProduct().productName}</div>
+                      <div 
+                        className={`font-bold text-right truncate pr-0 ${isExportMode ? 'export-product-name-shift' : ''}`} 
+                        style={{ 
+                          display: 'table-cell', 
+                          verticalAlign: 'middle', 
+                          lineHeight: '1',
+                          fontSize: `${productNameFontSize}px`
+                        }}
+                      >
+                        {getCurrentProduct().productName}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -631,7 +774,7 @@ export default function PriceTagEditor() {
                 {getCurrentProduct().specifications.some((spec) => spec.key && spec.value) && (
                   <div className={`p-4 ${isExportMode ? 'export-specifications-shift' : ''}`}>
                     <div className="font-bold mb-2">Основные характеристики:</div>
-                    <div className="space-y-1 text-sm">
+                    <div className="space-y-1" style={{ fontSize: `${specificationsFontSize}px` }}>
                       {getCurrentProduct().specifications
                         .filter((spec) => spec.key && spec.value)
                         .map((spec) => (
@@ -799,9 +942,9 @@ export default function PriceTagEditor() {
                         <div className="flex justify-between text-xs text-gray-500">
                           <span>-50px</span>
                           <span>50px</span>
-                        </div>
-                      </div>
-
+                </div>
+              </div>
+              
                       <div className="flex gap-2">
                         <Button
                           variant="outline"
@@ -821,7 +964,7 @@ export default function PriceTagEditor() {
                           Сохранить
                         </Button>
                       </div>
-                    </div>
+                          </div>
                   </div>
                 )}
               </div>

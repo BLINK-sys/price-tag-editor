@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Trash2, Download, Settings, FileText } from "lucide-react"
+import { Plus, Trash2, Download, Settings, FileText, X } from "lucide-react"
 import Image from "next/image"
 import jsPDF from "jspdf"
 import html2canvas from "html2canvas"
@@ -34,33 +34,102 @@ interface PDFSettings {
 }
 
 export default function PriceTagEditor() {
-  const [data, setData] = useState<PriceTagData>({
-    productName: "Название и модель товара",
-    specifications: [
-      { id: "1", key: "Характеристики", value: "1" },
-      { id: "2", key: "Характеристики", value: "2" },
-      { id: "3", key: "Характеристики", value: "3" },
-      { id: "4", key: "Характеристики", value: "4" },
-    ],
-    currentPrice: "900000",
-    originalPrice: "1000000",
-    hasDiscount: true,
-    currency: "тенге/шт",
-  })
+  // Состояние для количества товаров
+  const [productCount, setProductCount] = useState(1)
+  const [activeTab, setActiveTab] = useState(0)
+
+  // Массив данных для каждого товара
+  const [productsData, setProductsData] = useState<PriceTagData[]>([
+    {
+      productName: "Название и модель товара",
+      specifications: [
+        { id: "1", key: "Характеристики", value: "1" },
+        { id: "2", key: "Характеристики", value: "2" },
+        { id: "3", key: "Характеристики", value: "3" },
+        { id: "4", key: "Характеристики", value: "4" },
+      ],
+      currentPrice: "900000",
+      originalPrice: "1000000",
+      hasDiscount: true,
+      currency: "тенге/шт",
+    }
+  ])
 
   const [pdfSettings, setPdfSettings] = useState<PDFSettings>({
-    orientation: "landscape", // альбомная по умолчанию
-    includeTimestamp: false, // не используется
-    includeBorder: false, // не используется
+    orientation: "landscape",
+    includeTimestamp: false,
+    includeBorder: false,
   })
 
   const [isGenerating, setIsGenerating] = useState(false)
   const [showPreview, setShowPreview] = useState(false)
   const [exportFormat, setExportFormat] = useState<"pdf" | "image">("pdf")
-  const [isExportMode, setIsExportMode] = useState(false) // Новое состояние для режима экспорта
+  const [isExportMode, setIsExportMode] = useState(false)
+
+  // Функция для обновления количества товаров
+  const updateProductCount = (count: number) => {
+    // Ограничиваем максимум 2 товарами
+    const limitedCount = Math.min(count, 2)
+    setProductCount(limitedCount)
+    
+    if (limitedCount > productsData.length) {
+      // Добавляем новые товары
+      const newProducts = Array.from({ length: limitedCount - productsData.length }, (_, index) => ({
+        productName: `Товар ${productsData.length + index + 1}`,
+        specifications: [
+          { id: `${Date.now() + index}_1`, key: "Характеристики", value: "1" },
+          { id: `${Date.now() + index}_2`, key: "Характеристики", value: "2" },
+          { id: `${Date.now() + index}_3`, key: "Характеристики", value: "3" },
+          { id: `${Date.now() + index}_4`, key: "Характеристики", value: "4" },
+        ],
+        currentPrice: "900000",
+        originalPrice: "1000000",
+        hasDiscount: true,
+        currency: "тенге/шт",
+      }))
+      setProductsData([...productsData, ...newProducts])
+    } else if (limitedCount < productsData.length) {
+      // Удаляем лишние товары
+      setProductsData(productsData.slice(0, limitedCount))
+      if (activeTab >= limitedCount) {
+        setActiveTab(limitedCount - 1)
+      }
+    }
+  }
+
+  // Функция для проверки, нужно ли показывать селектор количества товаров
+  const shouldShowProductCountSelector = () => {
+    // Показываем только для PDF альбомной ориентации
+    return exportFormat === "pdf" && pdfSettings.orientation === "landscape"
+  }
+
+  // Функция для автоматического сброса на 1 товар при несовместимых настройках
+  const handleExportFormatChange = (value: "pdf" | "image") => {
+    setExportFormat(value)
+    if (value === "image" && productCount > 1) {
+      setProductCount(1)
+      setActiveTab(0)
+    }
+  }
+
+  const handleOrientationChange = (value: "portrait" | "landscape") => {
+    setPdfSettings(prev => ({ ...prev, orientation: value }))
+    if (value === "portrait" && productCount > 1) {
+      setProductCount(1)
+      setActiveTab(0)
+    }
+  }
+
+  // Функции для работы с текущим активным товаром
+  const getCurrentProduct = () => productsData[activeTab]
+  const setCurrentProduct = (updater: (prev: PriceTagData) => PriceTagData) => {
+    setProductsData(prev => prev.map((product, index) => 
+      index === activeTab ? updater(product) : product
+    ))
+  }
 
   const addSpecification = () => {
-    setData((prev) => {
+    setCurrentProduct((prev) => {
       if (prev.specifications.length >= 4) return prev;
       const newSpec = {
         id: Date.now().toString(),
@@ -75,16 +144,18 @@ export default function PriceTagEditor() {
   };
 
   const removeSpecification = (id: string) => {
-    setData((prev) => ({
+    setCurrentProduct((prev) => ({
       ...prev,
       specifications: prev.specifications.filter((spec) => spec.id !== id),
     }))
   }
 
   const updateSpecification = (id: string, field: "key" | "value", value: string) => {
-    setData((prev) => ({
+    setCurrentProduct((prev) => ({
       ...prev,
-      specifications: prev.specifications.map((spec) => (spec.id === id ? { ...spec, [field]: value } : spec)),
+      specifications: prev.specifications.map((spec) => 
+        spec.id === id ? { ...spec, [field]: value } : spec
+      ),
     }))
   }
 
@@ -125,68 +196,79 @@ export default function PriceTagEditor() {
   }
 
   const generatePDF = async () => {
-    const element = document.getElementById("price-tag-preview")
-    if (!element) return
-
     setIsGenerating(true)
-    setIsExportMode(true) // Включаем режим экспорта
+    setIsExportMode(true)
 
     try {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       const qualitySettings = getQualitySettings("high")
       const pageDimensions = getPageDimensions("a4", pdfSettings.orientation)
-
-      // Генерируем canvas без отступов, на всю страницу
-      const canvas = await html2canvas(element, {
-        scale: qualitySettings.scale,
-        useCORS: true,
-        allowTaint: true,
-        backgroundColor: "#ffffff",
-        scrollX: 0,
-        scrollY: 0,
-        width: element.offsetWidth,
-        height: element.offsetHeight,
-        imageTimeout: 15000,
-        logging: false,
-      })
-
       const pdf = new jsPDF(pdfSettings.orientation, "mm", "a4")
       const pdfWidth = pageDimensions.width
       const pdfHeight = pageDimensions.height
-      const imgData = canvas.toDataURL("image/png", qualitySettings.quality)
 
-      // Новая логика: вставляем картинку строго с (0,0) и на всю ширину/высоту
-      const copiesPerRow = pdfSettings.orientation === "landscape" ? 2 : 1
-      const copiesPerCol = Math.ceil(1 / copiesPerRow) // Количество копий всегда 1
-      const canvasAspectRatio = canvas.width / canvas.height
+      // Определяем количество товаров в ряду и колонке
+      // Только для A4 альбомной ориентации размещаем 2 товара
+      const copiesPerRow = (pdfSettings.orientation === "landscape" && productCount === 2) ? 2 : 1
+      const copiesPerCol = Math.ceil(productCount / copiesPerRow)
       const availableWidth = pdfWidth / copiesPerRow
       const availableHeight = pdfHeight / copiesPerCol
-      let targetWidth = availableWidth
-      let targetHeight = targetWidth / canvasAspectRatio
-      if (targetHeight > availableHeight) {
-        targetHeight = availableHeight
-        targetWidth = targetHeight * canvasAspectRatio
-      }
-      for (let copy = 0; copy < 1; copy++) { // Копий всегда 1
-        const row = Math.floor(copy / copiesPerRow)
-        const col = copy % copiesPerRow
+
+      // Генерируем PDF для каждого товара
+      for (let i = 0; i < productCount; i++) {
+        const row = Math.floor(i / copiesPerRow)
+        const col = i % copiesPerRow
         const x = col * availableWidth
         const y = row * availableHeight
+
+        // Временно устанавливаем активный товар для рендеринга
+        setActiveTab(i)
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        const element = document.getElementById("price-tag-preview")
+        if (!element) continue
+
+        const canvas = await html2canvas(element, {
+          scale: qualitySettings.scale,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: "#ffffff",
+          scrollX: 0,
+          scrollY: 0,
+          width: element.offsetWidth,
+          height: element.offsetHeight,
+          imageTimeout: 15000,
+          logging: false,
+        })
+
+        const imgData = canvas.toDataURL("image/png", qualitySettings.quality)
+        const canvasAspectRatio = canvas.width / canvas.height
+        
+        let targetWidth = availableWidth
+        let targetHeight = targetWidth / canvasAspectRatio
+        if (targetHeight > availableHeight) {
+          targetHeight = availableHeight
+          targetWidth = targetHeight * canvasAspectRatio
+        }
+
         pdf.addImage(imgData, "PNG", x, y, targetWidth, targetHeight)
       }
 
+      // Восстанавливаем активную вкладку
+      setActiveTab(0)
+
       // Add border if enabled
       if (pdfSettings.includeBorder) {
-      pdf.setDrawColor(200, 200, 200)
+        pdf.setDrawColor(200, 200, 200)
         pdf.setLineWidth(0.2)
         pdf.rect(2, 2, pdfWidth - 4, pdfHeight - 4)
       }
 
       // Add timestamp if enabled
       if (pdfSettings.includeTimestamp) {
-      pdf.setFontSize(8)
-      pdf.setTextColor(128, 128, 128)
+        pdf.setFontSize(8)
+        pdf.setTextColor(128, 128, 128)
         const timestamp = new Date().toLocaleString("ru-RU", {
           year: "numeric",
           month: "2-digit",
@@ -197,51 +279,48 @@ export default function PriceTagEditor() {
         pdf.text(`Создано: ${timestamp}`, 5, pdfHeight - 3)
       }
 
-      // Add page number if multiple pages
-      if (1 > 4) { // Копий всегда 1
-        pdf.setFontSize(10)
-        pdf.setTextColor(100, 100, 100)
-        pdf.text(`Страница 1`, pdfWidth - 25, pdfHeight - 5)
-      }
-
-      // Generate filename with more details
+      // Generate filename
       const date = new Date().toISOString().split("T")[0]
       const time = new Date().toLocaleTimeString("ru-RU", { 
         hour: "2-digit", 
         minute: "2-digit" 
       }).replace(":", "-")
-      const productName = data.productName
+      const productName = productsData[0].productName
         .replace(/[^a-zA-Zа-яА-Я0-9\s]/g, "")
         .substring(0, 25)
         .trim()
-      const copiesText = 1 > 1 ? `_${1}шт` : ""
+      const copiesText = productCount > 1 ? `_${productCount}шт` : ""
       const filename = `ценник_${productName}_${date}_${time}${copiesText}.pdf`
 
-      // Download the PDF
       pdf.save(filename)
-
       console.log("PDF успешно создан:", filename)
     } catch (error) {
       console.error("Ошибка при создании PDF:", error)
       alert("Произошла ошибка при создании PDF файла. Попробуйте еще раз.")
     } finally {
       setIsGenerating(false)
-      setIsExportMode(false) // Выключаем режим экспорта
+      setIsExportMode(false)
     }
   }
 
   const generateImage = async () => {
-    const element = document.getElementById("price-tag-preview")
-    if (!element) return
+    // PNG экспорт только для одного товара
+    if (productCount > 1) {
+      alert("PNG экспорт доступен только для одного товара. Выберите 1 товар или используйте PDF формат.")
+      return
+    }
 
     setIsGenerating(true)
-    setIsExportMode(true) // Включаем режим экспорта
+    setIsExportMode(true)
 
     try {
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       const qualitySettings = getQualitySettings("high")
       
+      const element = document.getElementById("price-tag-preview")
+      if (!element) return
+
       const canvas = await html2canvas(element, {
         scale: qualitySettings.scale,
         useCORS: true,
@@ -255,14 +334,13 @@ export default function PriceTagEditor() {
         logging: false,
       })
 
-      // Create download link
       const link = document.createElement("a")
       const date = new Date().toISOString().split("T")[0]
       const time = new Date().toLocaleTimeString("ru-RU", { 
         hour: "2-digit", 
         minute: "2-digit" 
       }).replace(":", "-")
-      const productName = data.productName
+      const productName = getCurrentProduct().productName
         .replace(/[^a-zA-Zа-яА-Я0-9\s]/g, "")
         .substring(0, 25)
         .trim()
@@ -277,7 +355,7 @@ export default function PriceTagEditor() {
       alert("Произошла ошибка при создании изображения. Попробуйте еще раз.")
     } finally {
       setIsGenerating(false)
-      setIsExportMode(false) // Выключаем режим экспорта
+      setIsExportMode(false)
     }
   }
 
@@ -291,14 +369,15 @@ export default function PriceTagEditor() {
 
   const getPDFInfo = () => {
     const pageDimensions = getPageDimensions("a4", pdfSettings.orientation)
-    const copiesPerRow = pdfSettings.orientation === "landscape" ? 2 : 1
-    const copiesPerCol = Math.ceil(1 / copiesPerRow) // Копий всегда 1
+    // Только для A4 альбомной ориентации размещаем 2 товара
+    const copiesPerRow = (pdfSettings.orientation === "landscape" && productCount === 2) ? 2 : 1
+    const copiesPerCol = Math.ceil(productCount / copiesPerRow)
     
     return {
       format: "A4",
       orientation: pdfSettings.orientation === "portrait" ? "Книжная" : "Альбомная",
       quality: "Высокое",
-      copies: 1,
+      copies: productCount,
       copiesPerRow,
       copiesPerCol,
       pageWidth: pageDimensions.width,
@@ -318,13 +397,55 @@ export default function PriceTagEditor() {
               <CardTitle>Информация о товаре</CardTitle>
             </CardHeader>
             <CardContent className="space-y-6 flex-1 flex flex-col">
+              {/* Селектор количества товаров */}
+              {shouldShowProductCountSelector() && (
+                <div className="space-y-2">
+                  <Label htmlFor="productCount">Количество товаров</Label>
+                  <Select
+                    value={productCount.toString()}
+                    onValueChange={(value) => updateProductCount(parseInt(value))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="1">1 товар</SelectItem>
+                      <SelectItem value="2">2 товара</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Вкладки товаров */}
+              {productCount > 1 && (
+                <div className="space-y-2">
+                  <Label>Выберите товар для редактирования:</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {productsData.slice(0, 2).map((product, index) => (
+                      <Button
+                        key={index}
+                        variant={activeTab === index ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setActiveTab(index)}
+                        className="flex items-center gap-2"
+                      >
+                        Товар {index + 1}
+                        {activeTab === index && (
+                          <div className="w-2 h-2 bg-white rounded-full"></div>
+                        )}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Product Name */}
               <div className="space-y-2">
-                <Label htmlFor="productName">Название товара</Label>
+                <Label htmlFor="productName">Название товара {productCount > 1 ? `(${activeTab + 1})` : ''}</Label>
                 <Input
                   id="productName"
-                  value={data.productName}
-                  onChange={(e) => setData((prev) => ({ ...prev, productName: e.target.value }))}
+                  value={getCurrentProduct().productName}
+                  onChange={(e) => setCurrentProduct((prev) => ({ ...prev, productName: e.target.value }))}
                   placeholder="Введите название товара"
                 />
               </div>
@@ -333,13 +454,13 @@ export default function PriceTagEditor() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <Label>Характеристики</Label>
-                  <Button onClick={addSpecification} size="sm" variant="outline" disabled={data.specifications.length >= 4}>
+                  <Button onClick={addSpecification} size="sm" variant="outline" disabled={getCurrentProduct().specifications.length >= 4}>
                     <Plus className="w-4 h-4 mr-2" />
                     Добавить
                   </Button>
                 </div>
 
-                {data.specifications.map((spec, index) => (
+                {getCurrentProduct().specifications.map((spec, index) => (
                   <div key={spec.id} className="flex gap-2 items-center">
                     <Input
                       placeholder="Свойство"
@@ -353,7 +474,7 @@ export default function PriceTagEditor() {
                       onChange={(e) => updateSpecification(spec.id, "value", e.target.value)}
                       className="flex-1"
                     />
-                    {data.specifications.length > 1 && (
+                    {getCurrentProduct().specifications.length > 1 && (
                       <Button onClick={() => removeSpecification(spec.id)} size="sm" variant="outline" className="px-2">
                         <Trash2 className="w-4 h-4" />
                       </Button>
@@ -367,31 +488,31 @@ export default function PriceTagEditor() {
                 <div className="flex items-center space-x-2">
                   <Switch
                     id="discount"
-                    checked={data.hasDiscount}
-                    onCheckedChange={(checked) => setData((prev) => ({ ...prev, hasDiscount: checked }))}
+                    checked={getCurrentProduct().hasDiscount}
+                    onCheckedChange={(checked) => setCurrentProduct((prev) => ({ ...prev, hasDiscount: checked }))}
                   />
                   <Label htmlFor="discount">Включить скидку</Label>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="currentPrice">{data.hasDiscount ? "Цена со скидкой" : "Цена"}</Label>
+                    <Label htmlFor="currentPrice">{getCurrentProduct().hasDiscount ? "Цена со скидкой" : "Цена"}</Label>
                     <Input
                       id="currentPrice"
-                      value={data.currentPrice}
-                      onChange={(e) => setData((prev) => ({ ...prev, currentPrice: e.target.value }))}
+                      value={getCurrentProduct().currentPrice}
+                      onChange={(e) => setCurrentProduct((prev) => ({ ...prev, currentPrice: e.target.value }))}
                       placeholder="0"
                       type="number"
                     />
                   </div>
 
-                  {data.hasDiscount && (
+                  {getCurrentProduct().hasDiscount && (
                     <div className="space-y-2">
                       <Label htmlFor="originalPrice">Первоначальная цена</Label>
                       <Input
                         id="originalPrice"
-                        value={data.originalPrice}
-                        onChange={(e) => setData((prev) => ({ ...prev, originalPrice: e.target.value }))}
+                        value={getCurrentProduct().originalPrice}
+                        onChange={(e) => setCurrentProduct((prev) => ({ ...prev, originalPrice: e.target.value }))}
                         placeholder="0"
                         type="number"
                       />
@@ -403,34 +524,14 @@ export default function PriceTagEditor() {
                   <Label htmlFor="currency">Валюта</Label>
                   <Input
                     id="currency"
-                    value={data.currency}
-                    onChange={(e) => setData((prev) => ({ ...prev, currency: e.target.value }))}
+                    value={getCurrentProduct().currency}
+                    onChange={(e) => setCurrentProduct((prev) => ({ ...prev, currency: e.target.value }))}
                     placeholder="тенге/шт"
                   />
                 </div>
               </div>
               
-              {/* Кнопка скачивания */}
-              <div className="mt-auto pt-6 flex justify-center">
-                <Button 
-                  className="px-6 py-2 text-base"
-                  style={{ width: 'auto', minWidth: 'unset' }}
-                  onClick={handleExport}
-                  disabled={isGenerating}
-                >
-                  {isGenerating ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                      Создание {exportFormat === "pdf" ? "PDF" : "изображения"}...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Скачать {exportFormat === "pdf" ? "PDF" : "PNG"}
-                    </>
-                  )}
-                </Button>
-              </div>
+
             </CardContent>
           </Card>
 
@@ -439,7 +540,7 @@ export default function PriceTagEditor() {
             <CardHeader>
               <CardTitle>Предварительный просмотр</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               <div
                 id="price-tag-preview"
                 className="bg-white overflow-visible mx-auto relative"
@@ -463,20 +564,20 @@ export default function PriceTagEditor() {
                 </div>
 
                 {/* Product name block - fixed width */}
-                {data.productName && (
+                {getCurrentProduct().productName && (
                   <div className="flex justify-end pb-2">
                     <div className="w-64 px-4 bg-[rgba(255,195,1,1)] text-right rounded-l-md" style={{ height: '32px', display: 'table' }}>
-                      <div className={`font-bold text-right truncate pr-0 ${isExportMode ? 'export-product-name-shift' : ''}`} style={{ display: 'table-cell', verticalAlign: 'middle', lineHeight: '1' }}>{data.productName}</div>
+                      <div className={`font-bold text-right truncate pr-0 ${isExportMode ? 'export-product-name-shift' : ''}`} style={{ display: 'table-cell', verticalAlign: 'middle', lineHeight: '1' }}>{getCurrentProduct().productName}</div>
                     </div>
                   </div>
                 )}
 
                 {/* Specifications */}
-                {data.specifications.some((spec) => spec.key && spec.value) && (
+                {getCurrentProduct().specifications.some((spec) => spec.key && spec.value) && (
                   <div className={`p-4 ${isExportMode ? 'export-specifications-shift' : ''}`}>
                     <div className="font-bold mb-2">Основные характеристики:</div>
                     <div className="space-y-1 text-sm">
-                      {data.specifications
+                      {getCurrentProduct().specifications
                         .filter((spec) => spec.key && spec.value)
                         .map((spec) => (
                           <div key={spec.id}>
@@ -490,18 +591,18 @@ export default function PriceTagEditor() {
                 {/* Price Section */}
                 <div className="p-4 flex items-end justify-end py-4 px-0 pt-0 pb-0 border-b-0 gap-x-0">
                   <div className="text-right">
-                    {data.hasDiscount && data.originalPrice ? (
+                    {getCurrentProduct().hasDiscount && getCurrentProduct().originalPrice ? (
                       <div className="flex flex-col items-end space-y-2">
                         <div className="px-3 border-0 rounded-l-lg bg-[rgba(255,195,1,1)]" style={{ height: '40px', display: 'table' }}>
                           <div className={`text-right ${isExportMode ? 'export-current-price-shift' : ''}`} style={{ display: 'table-cell', verticalAlign: 'middle', lineHeight: '1' }}>
-                            <span className="text-2xl font-bold">{formatPrice(data.currentPrice)}</span>
-                            <span className="text-xs ml-1">{data.currency}</span>
+                            <span className="text-2xl font-bold">{formatPrice(getCurrentProduct().currentPrice)}</span>
+                            <span className="text-xs ml-1">{getCurrentProduct().currency}</span>
                           </div>
                         </div>
                         <div className="border-gray-400 px-2 rounded-l-lg opacity-100 border text-base border-l pl-3" style={{ height: '28px', display: 'table' }}>
                           <div className={`text-right ${isExportMode ? 'export-original-price-shift' : ''}`} style={{ display: 'table-cell', verticalAlign: 'middle', lineHeight: '1', position: 'relative' }}>
-                            <span style={{ position: 'relative' }}>{formatPrice(data.originalPrice)}</span>
-                            <span className="text-xs ml-1">{data.currency}</span>
+                            <span style={{ position: 'relative' }}>{formatPrice(getCurrentProduct().originalPrice)}</span>
+                            <span className="text-xs ml-1">{getCurrentProduct().currency}</span>
                             <div className={`${isExportMode ? 'export-strikethrough-line-shift' : ''}`} style={{ 
                               position: 'absolute', 
                               top: '50%', 
@@ -515,11 +616,11 @@ export default function PriceTagEditor() {
                         </div>
                       </div>
                     ) : (
-                      data.currentPrice && (
+                      getCurrentProduct().currentPrice && (
                         <div className="px-3 border-0 rounded-l-lg bg-[rgba(255,195,1,1)]" style={{ height: '40px', display: 'table' }}>
                           <div className={`text-right ${isExportMode ? 'export-current-price-shift' : ''}`} style={{ display: 'table-cell', verticalAlign: 'middle', lineHeight: '1' }}>
-                            <span className="text-2xl font-bold">{formatPrice(data.currentPrice)}</span>
-                            <span className="text-xs ml-1">{data.currency}</span>
+                            <span className="text-2xl font-bold">{formatPrice(getCurrentProduct().currentPrice)}</span>
+                            <span className="text-xs ml-1">{getCurrentProduct().currency}</span>
                           </div>
                         </div>
                       )
@@ -537,6 +638,28 @@ export default function PriceTagEditor() {
                   />
                 </div>
               </div>
+
+              {/* Кнопка скачивания внутри карточки */}
+              <div className="flex justify-center pt-4">
+                <Button 
+                  className="px-6 py-2 text-base"
+                  style={{ width: 'auto', minWidth: 'unset' }}
+                  onClick={handleExport}
+                  disabled={isGenerating}
+                >
+                  {isGenerating ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Создание {exportFormat === "pdf" ? "PDF" : "изображения"}...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Скачать {exportFormat === "pdf" ? "PDF" : "PNG"}
+                    </>
+                  )}
+                </Button>
+              </div>
             </CardContent>
           </Card>
 
@@ -551,7 +674,7 @@ export default function PriceTagEditor() {
                   <Label htmlFor="orientation">Ориентация</Label>
                   <Select
                     value={pdfSettings.orientation}
-                    onValueChange={(value) => setPdfSettings(prev => ({ ...prev, orientation: value as any }))}
+                    onValueChange={(value) => handleOrientationChange(value as "portrait" | "landscape")}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -567,7 +690,7 @@ export default function PriceTagEditor() {
                   <Label htmlFor="exportFormat">Формат экспорта</Label>
                   <Select
                     value={exportFormat}
-                    onValueChange={(value) => setExportFormat(value as "pdf" | "image")}
+                    onValueChange={(value) => handleExportFormatChange(value as "pdf" | "image")}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -584,11 +707,13 @@ export default function PriceTagEditor() {
               <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                 <h3 className="font-semibold text-blue-800 mb-3">Текущая информация:</h3>
                 <div className="space-y-2 text-sm">
-                  <div><span className="font-medium">Название:</span> {data.productName || "Не указано"}</div>
+                  <div><span className="font-medium">Количество товаров:</span> {productCount}</div>
+                  <div><span className="font-medium">Активный товар:</span> {activeTab + 1}</div>
+                  <div><span className="font-medium">Название:</span> {getCurrentProduct().productName || "Не указано"}</div>
                   <div><span className="font-medium">Характеристики:</span></div>
                   <div className="ml-4 space-y-1">
-                    {data.specifications.filter(spec => spec.key && spec.value).length > 0 ? (
-                      data.specifications
+                    {getCurrentProduct().specifications.filter(spec => spec.key && spec.value).length > 0 ? (
+                      getCurrentProduct().specifications
                         .filter(spec => spec.key && spec.value)
                         .map((spec) => (
                           <div key={spec.id} className="text-gray-700">
@@ -601,13 +726,13 @@ export default function PriceTagEditor() {
                   </div>
                   <div><span className="font-medium">Цены:</span></div>
                   <div className="ml-4 space-y-1">
-                    {data.hasDiscount ? (
+                    {getCurrentProduct().hasDiscount ? (
                       <>
-                        <div className="text-green-700">• Со скидкой: {formatPrice(data.currentPrice)} {data.currency}</div>
-                        <div className="text-gray-600 line-through">• Первоначальная: {formatPrice(data.originalPrice)} {data.currency}</div>
+                        <div className="text-green-700">• Со скидкой: {formatPrice(getCurrentProduct().currentPrice)} {getCurrentProduct().currency}</div>
+                        <div className="text-gray-600 line-through">• Первоначальная: {formatPrice(getCurrentProduct().originalPrice)} {getCurrentProduct().currency}</div>
                       </>
                     ) : (
-                      <div className="text-gray-700">• {formatPrice(data.currentPrice)} {data.currency}</div>
+                      <div className="text-gray-700">• {formatPrice(getCurrentProduct().currentPrice)} {getCurrentProduct().currency}</div>
                     )}
                   </div>
                 </div>
@@ -623,7 +748,7 @@ export default function PriceTagEditor() {
                   <div>Формат: {getPDFInfo().format}</div>
                   <div>Ориентация: {getPDFInfo().orientation}</div>
                   <div>Качество: {getPDFInfo().quality}</div>
-                  <div>Копий: {getPDFInfo().copies}</div>
+                  <div>Товаров: {getPDFInfo().copies}</div>
                   <div>Расположение: {getPDFInfo().copiesPerRow}×{getPDFInfo().copiesPerCol}</div>
                   <div>Размер страницы: {getPDFInfo().pageWidth}×{getPDFInfo().pageHeight} мм</div>
                 </div>

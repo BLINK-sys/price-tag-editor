@@ -1,16 +1,18 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Switch } from "@/components/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Plus, Trash2, Download, Settings, FileText, X } from "lucide-react"
+import { Plus, Trash2, Download, Settings, FileText, X, Image as ImageIcon } from "lucide-react"
 import Image from "next/image"
 import jsPDF from "jspdf"
 import html2canvas from "html2canvas"
+import { loadLogoConfig, saveLogoConfig, defaultLogoConfig, LogoConfig } from "@/lib/config"
+import { ConfirmDialog } from "@/components/ui/confirm-dialog"
 
 interface Specification {
   id: string
@@ -31,6 +33,11 @@ interface PDFSettings {
   orientation: "portrait" | "landscape"
   includeTimestamp: boolean
   includeBorder: boolean
+}
+
+interface LogoSettings {
+  size: number
+  verticalPosition: number
 }
 
 export default function PriceTagEditor() {
@@ -65,6 +72,44 @@ export default function PriceTagEditor() {
   const [showPreview, setShowPreview] = useState(false)
   const [exportFormat, setExportFormat] = useState<"pdf" | "image">("pdf")
   const [isExportMode, setIsExportMode] = useState(false)
+  
+  // Состояние для настроек логотипа
+  const [logoSettings, setLogoSettings] = useState<LogoSettings>({ size: 180, verticalPosition: 0 })
+  const [showLogoSettings, setShowLogoSettings] = useState(false)
+  const [isClient, setIsClient] = useState(false)
+  const [showSaveConfirmDialog, setShowSaveConfirmDialog] = useState(false)
+
+  // Загружаем сохраненные настройки только на клиенте
+  useEffect(() => {
+    setIsClient(true)
+    const loadSettings = async () => {
+      try {
+        const config = await loadLogoConfig()
+        setLogoSettings(config)
+      } catch (e) {
+        console.error('Ошибка загрузки настроек логотипа:', e)
+        setLogoSettings(defaultLogoConfig)
+      }
+    }
+    loadSettings()
+  }, [])
+
+  // Функция для показа диалога подтверждения сохранения
+  const handleSaveClick = () => {
+    setShowSaveConfirmDialog(true)
+  }
+
+  // Функция для сохранения настроек логотипа
+  const saveLogoSettings = async () => {
+    try {
+      await saveLogoConfig(logoSettings)
+      setShowSaveConfirmDialog(false)
+      // Убираем alert, так как у нас есть красивое модальное окно
+    } catch (e) {
+      console.error('Ошибка сохранения настроек логотипа:', e)
+      alert('Ошибка сохранения настроек!')
+    }
+  }
 
   // Функция для обновления количества товаров
   const updateProductCount = (count: number) => {
@@ -553,13 +598,23 @@ export default function PriceTagEditor() {
 
                   {/* Logo section */}
                   <div className="p-4 flex bg-white flex-row justify-start flex-1">
-                    <Image
-                      src="/images/logo_pospro_new.png"
-                      alt="POSPRO Logo"
-                      width={180}
-                      height={90}
-                      className="object-contain"
-                    />
+                    <div 
+                      className="cursor-pointer hover:opacity-80 transition-opacity"
+                      onClick={() => setShowLogoSettings(!showLogoSettings)}
+                      title="Нажмите для настройки размера логотипа"
+                      style={{ 
+                        transform: isClient ? `translateY(${logoSettings.verticalPosition}px)` : 'translateY(0px)',
+                        transition: 'transform 0.2s ease'
+                      }}
+                    >
+                      <Image
+                        src="/images/logo_pospro_new.png"
+                        alt="POSPRO Logo"
+                        width={isClient ? logoSettings.size : 180}
+                        height={isClient ? logoSettings.size * 0.5 : 90}
+                        className="object-contain"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -701,50 +756,80 @@ export default function PriceTagEditor() {
                     </SelectContent>
                   </Select>
                 </div>
-              </div>
-              
-              {/* Информационный блок */}
-              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-                <h3 className="font-semibold text-blue-800 mb-3">Текущая информация:</h3>
-                <div className="space-y-2 text-sm">
-                  <div><span className="font-medium">Количество товаров:</span> {productCount}</div>
-                  <div><span className="font-medium">Активный товар:</span> {activeTab + 1}</div>
-                  <div><span className="font-medium">Название:</span> {getCurrentProduct().productName || "Не указано"}</div>
-                  <div><span className="font-medium">Характеристики:</span></div>
-                  <div className="ml-4 space-y-1">
-                    {getCurrentProduct().specifications.filter(spec => spec.key && spec.value).length > 0 ? (
-                      getCurrentProduct().specifications
-                        .filter(spec => spec.key && spec.value)
-                        .map((spec) => (
-                          <div key={spec.id} className="text-gray-700">
-                            • {spec.key}: {spec.value}
-                          </div>
-                        ))
-                    ) : (
-                      <div className="text-gray-500 italic">Не указаны</div>
-                    )}
+
+                {/* Настройки логотипа */}
+                {showLogoSettings && (
+                  <div className="space-y-4 pt-4 border-t">
+                    <div className="flex items-center gap-2">
+                      <ImageIcon className="w-4 h-4" />
+                      <Label className="font-medium">Настройки логотипа</Label>
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="logoSize" className="text-sm">Размер: {isClient ? logoSettings.size : 180}px</Label>
+                        <input
+                          id="logoSize"
+                          type="range"
+                          min="50"
+                          max="300"
+                          value={isClient ? logoSettings.size : 180}
+                          onChange={(e) => setLogoSettings(prev => ({ ...prev, size: parseInt(e.target.value) }))}
+                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                          disabled={!isClient}
+                        />
+                        <div className="flex justify-between text-xs text-gray-500">
+                          <span>50px</span>
+                          <span>300px</span>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="logoPosition" className="text-sm">Положение: {isClient ? logoSettings.verticalPosition : 0}px</Label>
+                        <input
+                          id="logoPosition"
+                          type="range"
+                          min="-50"
+                          max="50"
+                          value={isClient ? logoSettings.verticalPosition : 0}
+                          onChange={(e) => setLogoSettings(prev => ({ ...prev, verticalPosition: parseInt(e.target.value) }))}
+                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                          disabled={!isClient}
+                        />
+                        <div className="flex justify-between text-xs text-gray-500">
+                          <span>-50px</span>
+                          <span>50px</span>
+                        </div>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setLogoSettings({ size: 180, verticalPosition: 0 })
+                          }}
+                          className="flex-1"
+                        >
+                          Сбросить
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={handleSaveClick}
+                          className="flex-1"
+                        >
+                          Сохранить
+                        </Button>
+                      </div>
+                    </div>
                   </div>
-                  <div><span className="font-medium">Цены:</span></div>
-                  <div className="ml-4 space-y-1">
-                    {getCurrentProduct().hasDiscount ? (
-                      <>
-                        <div className="text-green-700">• Со скидкой: {formatPrice(getCurrentProduct().currentPrice)} {getCurrentProduct().currency}</div>
-                        <div className="text-gray-600 line-through">• Первоначальная: {formatPrice(getCurrentProduct().originalPrice)} {getCurrentProduct().currency}</div>
-                      </>
-                    ) : (
-                      <div className="text-gray-700">• {formatPrice(getCurrentProduct().currentPrice)} {getCurrentProduct().currency}</div>
-                    )}
-                  </div>
-                </div>
+                )}
               </div>
               
               {/* PDF Info Preview внизу карточки */}
-              <div className="bg-gray-50 p-3 rounded-lg mt-6">
-                <div className="flex items-center gap-2 mb-2">
-                  <FileText className="w-4 h-4" />
-                  <Label className="font-medium text-sm">Настройки PDF</Label>
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                <h3 className="font-semibold text-blue-800 mb-3">Настройки PDF:</h3>
+                <div className="space-y-2 text-sm text-blue-700">
                   <div>Формат: {getPDFInfo().format}</div>
                   <div>Ориентация: {getPDFInfo().orientation}</div>
                   <div>Качество: {getPDFInfo().quality}</div>
@@ -757,6 +842,18 @@ export default function PriceTagEditor() {
           </Card>
         </div>
       </div>
+
+      {/* Модальное окно подтверждения сохранения */}
+      <ConfirmDialog
+        isOpen={showSaveConfirmDialog}
+        onClose={() => setShowSaveConfirmDialog(false)}
+        onConfirm={saveLogoSettings}
+        title="Подтверждение сохранения"
+        message="Сохранить новые размеры логотипа? (Размер будет подгружаться автоматически)"
+        confirmText="Сохранить"
+        cancelText="Отмена"
+      />
+
     </div>
   )
 }
